@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Ловец мандаринов</title>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+    background:#000;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+    overflow:hidden;
+    font-family:sans-serif;
+}
+#gameWrapper{
+    position:relative;
+    
+}
+
+canvas{
+    border:2px solid #000;
+    background:#111;
+}
+/* Кнопки движения по умолчанию скрыты */
+.control{
+    display:none;
+}
+
+/* Для тач-устройств показываем */
+@media (pointer: coarse) {
+    .control{
+        display:block;
+    }
+}
+/* Кнопки управления */
+.control{
+    position:absolute;
+    bottom:20px;
+    width: 80px;
+    height:110px;
+}
+#leftBtn{left:20px;}
+#rightBtn{right:20px;}
+#pauseBtn{
+    position:absolute;
+    top:12px;
+    right:12px;
+    width:48px;
+    height:48px;
+    z-index: 10;
+}
+
+/* Экран паузы */
+#pauseScreen,
+#gameOver{
+    position:absolute;
+    inset:0;
+    background:rgba(0,0,0,0.8);
+    color:#fff;
+    display:none;
+    justify-content:center;
+    align-items:center;
+    flex-direction:column;
+    text-align:center;
+}
+button{
+    padding:10px 20px;
+    margin-top:10px;
+    font-size:16px;
+    border:none;
+    border-radius:6px;
+    cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<div id="gameWrapper">
+    <canvas id="game" width="400" height="700"></canvas>
+
+    <!-- Кнопки управления -->
+    <img id="leftBtn" class="control" src="https://psv4.userapi.com/s/v1/d2/w1AdAIBKJCu9gaoBnXZQKNvLrmEamepYfpJDKXdN7nkSu0wZAEQrD2vulDjCNdFjezkU-TikutOFinGfSiyK5ZnG-VuYi0ETSaNxNU9XQooVU6SfFtM2HamZjF1qMuzGdeLUxsfC9yip/btn_left.png">
+    <img id="rightBtn" class="control" src="https://psv4.userapi.com/s/v1/d2/KtTQ8cSlNb1AX9EU36WSHVPGukPNwnx-3ygDpHzXQC0mcd7Su5_64eTSAgHiaKZlH10s4rx4KLKa9cTdLWP38JnF9yDUcmBaoRNJ3dXomVlI2LhP9mApCPydMFnY3af--Ic_CM112rMu/btn_right.png">
+    <img id="pauseBtn" src="https://psv4.userapi.com/s/v1/d2/_cwIfMVw6fp6Gk-MV3yDDlr2DIiNEADzisTuvATlkmIMe3IP-_MPhw-WDSn-IWNYr57BoahWUnd6pQXKzXnYhpLnGMkjRr_wsGcBzX_ahwZw0z1nIxhHsLh6-WGItOOpnLHefp5iJAKU/btn_pause.png">
+
+    <!-- Пауза -->
+    <div id="pauseScreen">
+        <h2>Пауза</h2>
+        <button onclick="resumeGame()">Продолжить</button>
+    </div>
+
+    <!-- Game Over -->
+    <div id="gameOver">
+        <h2>Игра окончена</h2>
+        <p>Твой счёт: <span id="finalScore">0</span></p>
+        <button onclick="restartGame()">Начать заново</button>
+        <button onclick="shareScore()">Поделиться рекордом</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+const W = canvas.width;
+const H = canvas.height;
+
+// === Картинки ===
+const playerImg = new Image(); playerImg.src = 'https://psv4.userapi.com/s/v1/d2/7UvTYMdT6I1sNzCy8THBPwMEm6LR4f4UEaENjKCnBrq_BQBi91fycMXIkj9banmasFNrqoYy100qIKzrlO9vZQ-enizzam8USsVY9h57equQEo-qaSWhhhd9-vrI3XCZe_sNVTdgJ4aF/player.png';
+const bgImg = new Image(); bgImg.src = 'https://sun9-47.userapi.com/s/v1/ig2/RNsrE3BWGMcjNrE0h4QmszdP2aGuGfuEl14XZL9xzr1aVvthS_S496L9V8cGQeXPdgHrMZ6mDmrXD79VmMrsHoER.jpg?quality=95&as=32x48,48x72,72x108,108x162,160x240,240x360,360x540,480x720,540x810,640x960,720x1080,1024x1536&from=bu&cs=1024x0';
+const mandarinImg = new Image(); mandarinImg.src = 'https://psv4.userapi.com/s/v1/d2/Y-BpOi2YiU4OwFc8kn6QpHI8AFgIQERKeMB3xIgc0q-2szvIgHmitV-ssbfgFnuCHyzxlrwI6IbOClxIfAg3atGQjBjjw97RMwVoW55bsrpGZHNLoswmVExjfB7OgpsPbzNSq1vopuM5/mandarin.png';
+
+// === Игровые данные ===
+let player, mandarins, score, lives, paused, over;
+let combo, comboMultiplier, comboTimer;
+let highScore = localStorage.getItem('mandarinHighScore') || 0;
+
+function init(){
+    player = {x:W/2-25,y:H-90,w:80,h:110,speed:6};
+    mandarins = [];
+    score = 0;
+    lives = 5;
+    combo = 0;
+    comboMultiplier = 1;
+    comboTimer = 0;
+    paused = false;
+    over = false;
+    document.getElementById('gameOver').style.display='none';
+}
+init();
+
+// === Управление ===
+let moveLeft=false, moveRight=false;
+
+document.getElementById('leftBtn').addEventListener('touchstart',()=>moveLeft=true);
+document.getElementById('leftBtn').addEventListener('touchend',()=>moveLeft=false);
+document.getElementById('rightBtn').addEventListener('touchstart',()=>moveRight=true);
+document.getElementById('rightBtn').addEventListener('touchend',()=>moveRight=false);
+
+document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowLeft') moveLeft=true;
+    if(e.key==='ArrowRight') moveRight=true;
+});
+document.addEventListener('keyup',e=>{
+    if(e.key==='ArrowLeft') moveLeft=false;
+    if(e.key==='ArrowRight') moveRight=false;
+});
+
+// === Пауза ===
+document.getElementById('pauseBtn').onclick=()=>{
+    paused=true;
+    document.getElementById('pauseScreen').style.display='flex';
+};
+function resumeGame(){
+    paused=false;
+    document.getElementById('pauseScreen').style.display='none';
+}
+
+// === Мандарины ===
+function spawnMandarin(){
+    mandarins.push({
+        x:Math.random()*(W-40),
+        y:-40,
+        w:40,h:40,
+        speed:3+score*0.04
+    });
+}
+
+// === Логика ===
+function update(){
+    if(paused||over) return;
+
+    if(moveLeft) player.x-=player.speed;
+    if(moveRight) player.x+=player.speed;
+    player.x=Math.max(0,Math.min(W-player.w,player.x));
+
+    comboTimer--;
+    if(comboTimer<=0){
+        combo = 0;
+        comboMultiplier = 1;
+    }
+
+    mandarins.forEach((m,i)=>{
+        m.y+=m.speed;
+
+        // Промах
+        if(m.y>H){
+            mandarins.splice(i,1);
+            lives--;
+            combo = 0;
+            comboMultiplier = 1;
+            if(lives<=0) endGame();
+        }
+
+        // Попадание
+        if(
+            m.x < player.x + player.w &&
+            m.x + m.w > player.x &&
+            m.y < player.y + player.h &&
+            m.y + m.h > player.y
+        ){
+            combo++;
+            comboTimer = 120; // 2 секунды на продолжение
+            comboMultiplier = Math.floor(combo / 5) + 1;
+            score += comboMultiplier;
+            mandarins.splice(i,1);
+        }
+    });
+
+    if(Math.random()<0.02) spawnMandarin();
+}
+
+// === Отрисовка ===
+function draw(){
+    ctx.drawImage(bgImg,0,0,W,H);
+    ctx.drawImage(playerImg,player.x,player.y,player.w,player.h);
+    mandarins.forEach(m=>ctx.drawImage(mandarinImg,m.x,m.y,m.w,m.h));
+
+    ctx.fillStyle='#fff';
+    ctx.font='18px Arial';
+    ctx.fillText(`Счёт: ${score}`,10,25);
+    ctx.fillText(`Рекорд: ${highScore}`,10,50);
+    ctx.fillText(`Жизни: ${lives}`,10,75);
+
+    if(comboMultiplier > 1){
+        ctx.fillStyle='#ffa500';
+        ctx.font='bold 26px Arial';
+        ctx.fillText(`x${comboMultiplier} COMBO`, W/2-80, 120);
+    }
+}
+
+// === Конец ===
+function endGame(){
+    over=true;
+    if(score>highScore){
+        highScore=score;
+        localStorage.setItem('mandarinHighScore',highScore);
+    }
+    document.getElementById('finalScore').innerText=score;
+    document.getElementById('gameOver').style.display='flex';
+}
+
+function restartGame(){
+    init();
+}
+
+// === Поделиться ===
+function shareScore(){
+    window.open('https://t.me/arbekovopnz58/12019','_blank');
+}
+
+// === Цикл ===
+function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+loop();
+</script> 
+
+</body>
+</html>
